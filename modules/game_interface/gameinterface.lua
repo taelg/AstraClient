@@ -2345,7 +2345,9 @@ function refreshViewMode()
   local classic = isClassicViewActive() -- and not g_app.isMobile()
   updatePanelArrowVisibility()
   local rightPanels = g_settings.getNumber("rightPanels") - gameRightPanels:getChildCount()
-  local leftPanels = g_settings.getNumber("leftPanels") - gameLeftPanels:getChildCount()
+  -- HARDCODED (requested): the left side always has exactly 2 panels, no matter
+  -- what may be stored in settings/config. Right side is left untouched.
+  local leftPanels = 2 - gameLeftPanels:getChildCount()
 
   while rightPanels ~= 0 do
     if rightPanels > 0 then
@@ -2432,9 +2434,9 @@ function refreshViewMode()
     else
       updateTopBar("hidden")
     end
-    gameMapPanel:setKeepAspectRatio(true)
+    gameMapPanel:setKeepAspectRatio(false)
     gameMapPanel:setLimitVisibleRange(false)
-    gameMapPanel:setZoom(11)
+    gameMapPanel:setZoom(12)
     gameMapPanel:setOn(false) -- frame
     gameLeftActionPanel:setImageSource('/images/ui/actionbar_background-light')
     gameRightActionPanel:setImageSource('/images/ui/actionbar_background-light')
@@ -2784,14 +2786,11 @@ local function closeRestoredWidget(widget, primordial)
 end
 
 function onPlayerLoad(config)
-  if not config.leftSidebarCount then
-    for i = 1, gameLeftPanels:getChildCount() do
-      removeLeftPanel()
-    end
-    config.leftSidebarCount = 0
-  end
-
-  if not config.openWidgetsOrderPerSidebar then
+  -- If there is no saved sidebar layout for this character (e.g. sidebars.json
+  -- couldn't be loaded on first login after client restart), do NOT wipe the
+  -- left panels. refreshViewMode() already forces the default (2) for the left
+  -- side. Removing them here is what reset the left to 0 on the first login.
+  if not config.leftSidebarCount or not config.openWidgetsOrderPerSidebar then
     return
   end
   local leftPanels = config.leftSidebarCount

@@ -1720,9 +1720,6 @@ function online()
 
   -- Criar o painel de atalhos do helper (shortcut panel) se estiver habilitado
   scheduleEvent(function()
-    if g_game.isOnline() and _Helper.Shortcut.isVisible() then
-      _Helper.Shortcut.createPanel()
-    end
     -- Sincronizar checkbox do helper com o valor carregado
     local contentPanel = getHelperContentPanel()
     if contentPanel then
@@ -1746,13 +1743,6 @@ function online()
       _Helper.ExerciseTraining.onLogin()
     end
   end, 1600)
-
-  -- Criar ATCHelper widget no painel direito
-  scheduleEvent(function()
-    if g_game.isOnline() then
-      createATCHelperWidget()
-    end
-  end, 100)
 
   -- Iniciar Timer se necessario
   scheduleEvent(function()

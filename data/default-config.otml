@@ -1,6 +1,6 @@
-window-size: 1490 714
-window-pos: 61 92
-window-maximized: false
+window-size: 3440 1440
+window-pos: 0 0
+window-maximized: true
 locale: en
 extras_debugPathfinding: false
 extras_debugPredictiveWalking: false
@@ -47,7 +47,7 @@ leftPanels: 0
 containerMoveToManagedContainerRecursiveWarning: false
 containerSortRecursive: false
 showPrivateMessagesInConsole: true
-rightPanels: 1
+rightPanels: 0
 showFps: true
 hotkeyDelay: 50
 containerSortBackpacksFirst: false
@@ -112,13 +112,13 @@ displayText: true
 enableAudio: true
 hotkeyDelayNative: false
 walkTurnDelay: 0
-cacheMap: false
+cacheMap: true
 chatModeOn: true
 nativeMouseCursor: false
 storeAskBeforeBuyingProducts: true
 stayLoggedInforSession: false
 actionbarLock: false
-classicView: true
+classicView: false
 showOwnHealth: true
 layout: default
 hidePlayerBars: false
@@ -149,7 +149,7 @@ spellsOthers: false
 optimiseConnectionStability: false
 resetconfig: true
 map
-  viewport: 8 6
+  viewport: 22 18
   extended-view-ui: false
   max-z: 15
   sea-floor: 7

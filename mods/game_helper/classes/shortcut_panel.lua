@@ -108,6 +108,8 @@ _Helper.Shortcut.setVisible = function(value)
 end
 
 _Helper.Shortcut.createPanel = function()
+  --[[ Shortcut panel is DISABLED.
+  -- To re-enable, uncomment the body below.
   if helperShortcutPanel then
     return -- Já existe
   end
@@ -144,6 +146,7 @@ _Helper.Shortcut.createPanel = function()
 
   -- Sincronizar estado dos botões com as configurações atuais
   _Helper.Shortcut.syncPanelState()
+  --]]
 end
 
 _Helper.Shortcut.destroyPanel = function()

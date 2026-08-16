@@ -283,7 +283,6 @@ function onContainerOpen(container, previousContainer)
     if not layout then
       return
     end
-
     local cellSize = layout:getCellSize()
     containerWindow:setContentMinimumHeight(cellSize.height)
     containerWindow:setContentMaximumHeight((cellSize.height+3)*layout:getNumLines())
@@ -322,6 +321,13 @@ function onContainerOpen(container, previousContainer)
 
     containerWindow:setup()
     containerWindow:setColor(ContainerConfig.moveManualSort and "#C28400" or "#909090")
+
+    -- Open newly opened containers already at their maximum size (no need to
+    -- resize the window after opening).
+    if not previousContainer then
+      containerWindow.maximizedHeight = containerWindow:getMaximumHeight()
+      containerWindow:maximize()
+    end
   end)
 
 end

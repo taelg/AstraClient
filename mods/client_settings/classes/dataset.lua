@@ -696,7 +696,7 @@ return {
 	},
 
 	leftPanels = {
-		value = 0,
+		value = 2,
         apply = function(value)
             m_interface.refreshViewMode()
             return true
@@ -768,7 +768,7 @@ return {
 	},
 
 	rightPanels = {
-		value = 1,
+		value = 2,
         apply = function(value)
             m_interface.refreshViewMode()
             return true
