@@ -618,6 +618,7 @@ function HomeOffer:processDailyOfferPurchase(offerId)
 	if not offer then
 		return
 	end
+	Store.ensureBuyOfferWindow()
 
 	if buyOfferWindow:isVisible() then
 		return true

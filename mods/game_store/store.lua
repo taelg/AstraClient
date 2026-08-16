@@ -1,3 +1,6 @@
+Store = Store or {}
+Store.__index = Store
+
 StoreWindow = nil
 offerCheckBox = nil
 buyOfferWindow = nil
@@ -14,8 +17,51 @@ giftWindow = nil
 
 local categoryUpdateEvent = nil
 local contentUpdateEvent = nil
--- Shared with the purchase callback in classes/Offers.lua.
-ensureStoreWindow = nil
+local closeStoreEvent = nil
+local pixRequestGeneration = 0
+local function ensureAuxWindow(current, style)
+  if current and not current:isDestroyed() then
+    return current
+  end
+  local window = g_ui.createWidget(style, rootWidget)
+  window:hide()
+  return window
+end
+
+function Store.ensureBuyOfferWindow()
+  buyOfferWindow = ensureAuxWindow(buyOfferWindow, 'BuyOfferWindow')
+  return buyOfferWindow
+end
+
+function Store.ensureSuccessOfferWindow()
+  SucessOfferWindow = ensureAuxWindow(SucessOfferWindow, 'SucessOfferWindow')
+  return SucessOfferWindow
+end
+
+function Store.ensureNameChangePanel()
+  nameChangePanel = ensureAuxWindow(nameChangePanel, 'NameChangeWindow')
+  return nameChangePanel
+end
+
+function Store.ensureHirelingWindow()
+  hirelingWindow = ensureAuxWindow(hirelingWindow, 'HirelingWindow')
+  return hirelingWindow
+end
+
+function Store.ensureHirelingNameWindow()
+  hirelingNameWindow = ensureAuxWindow(hirelingNameWindow, 'HirelingNameChange')
+  return hirelingNameWindow
+end
+
+function Store.ensureBazaarWindow()
+  bazaarWindow = ensureAuxWindow(bazaarWindow, 'BazaarWindow')
+  return bazaarWindow
+end
+
+function Store.ensurePixWindow()
+  pixWindow = ensureAuxWindow(pixWindow, 'PixWindow')
+  return pixWindow
+end
 
 local function cancelPendingStoreUpdates(cancelRenders)
   removeEvent(categoryUpdateEvent)
@@ -30,12 +76,17 @@ local function cancelPendingStoreUpdates(cancelRenders)
   end
 end
 
+local function cancelPendingStoreClose()
+  removeEvent(closeStoreEvent)
+  closeStoreEvent = nil
+end
+
 local function queueStoreUpdate(eventName, callback)
   if eventName == "category" then
     removeEvent(categoryUpdateEvent)
     categoryUpdateEvent = scheduleEvent(function()
       categoryUpdateEvent = nil
-      if ensureStoreWindow() then
+      if Store.ensureWindow() then
         callback()
       end
     end, 1)
@@ -45,7 +96,7 @@ local function queueStoreUpdate(eventName, callback)
   removeEvent(contentUpdateEvent)
   contentUpdateEvent = scheduleEvent(function()
     contentUpdateEvent = nil
-    if ensureStoreWindow() then
+    if Store.ensureWindow() then
       callback()
     end
   end, 1)
@@ -66,7 +117,7 @@ local importFiles = {
   'styles/pixdonate'
 }
 
-ensureStoreWindow = function()
+Store.ensureWindow = function()
   if StoreWindow then
     return StoreWindow
   end
@@ -77,23 +128,6 @@ ensureStoreWindow = function()
   for i, file in pairs(importFiles) do
     g_ui.importStyle(file)
   end
-
-  buyOfferWindow = g_ui.createWidget('BuyOfferWindow', rootWidget)
-  buyOfferWindow:hide()
-  SucessOfferWindow = g_ui.createWidget('SucessOfferWindow', rootWidget)
-  SucessOfferWindow:hide()
-
-  nameChangePanel = g_ui.createWidget('NameChangeWindow', rootWidget)
-  nameChangePanel:hide()
-  hirelingWindow = g_ui.createWidget('HirelingWindow', rootWidget)
-  hirelingWindow:hide()
-  hirelingNameWindow = g_ui.createWidget('HirelingNameChange', rootWidget)
-  hirelingNameWindow:hide()
-  bazaarWindow = g_ui.createWidget('BazaarWindow', rootWidget)
-  bazaarWindow:hide()
-
-  pixWindow = g_ui.createWidget('PixWindow', rootWidget)
-  pixWindow:hide()
 
   offerCheckBox = UIRadioGroup.create()
   connect(offerCheckBox, { onSelectionChange = onSelectionOffer })
@@ -132,7 +166,9 @@ function init()
 end
 
 function terminate()
+  cancelPendingStoreClose()
   cancelPendingStoreUpdates(true)
+  pixRequestGeneration = pixRequestGeneration + 1
 
   if terminateStoreProtocol then
     terminateStoreProtocol()
@@ -140,6 +176,9 @@ function terminate()
 
   if g_game.isOnline() then
     onGameEnd()
+  else
+    Offers:stopAllEvents()
+    Store:resetSession()
   end
 
   if StoreWindow then
@@ -217,7 +256,9 @@ end
 
 -- Setup Store
 function onGameEnd()
+  cancelPendingStoreClose()
   cancelPendingStoreUpdates(true)
+  pixRequestGeneration = pixRequestGeneration + 1
 
   Offers:stopAllEvents()
   Store:resetSession()
@@ -234,22 +275,25 @@ function onGameEnd()
     StoreWindow:hide()
   end
   g_client.setInputLockWidget(nil)
-  if buyOfferWindow:isVisible() then
+  if buyOfferWindow and buyOfferWindow:isVisible() then
     buyOfferWindow:hide()
   end
-  if hirelingWindow:isVisible() then
+  if SucessOfferWindow and SucessOfferWindow:isVisible() then
+    SucessOfferWindow:hide()
+  end
+  if hirelingWindow and hirelingWindow:isVisible() then
     hirelingWindow:hide()
   end
-  if hirelingNameWindow:isVisible() then
+  if hirelingNameWindow and hirelingNameWindow:isVisible() then
     hirelingNameWindow:hide()
   end
-  if nameChangePanel:isVisible() then
+  if nameChangePanel and nameChangePanel:isVisible() then
     nameChangePanel:hide()
   end
-  if bazaarWindow:isVisible() then
+  if bazaarWindow and bazaarWindow:isVisible() then
     bazaarWindow:hide()
   end
-  if pixWindow:isVisible() then
+  if pixWindow and pixWindow:isVisible() then
     pixWindow:hide()
   end
   if transferError and transferError:isVisible() then
@@ -269,7 +313,10 @@ function onGameEnd()
 end
 
 function closeStore()
+  cancelPendingStoreClose()
   cancelPendingStoreUpdates(false)
+  removeEvent(Store.openHomeEvent)
+  Store.openHomeEvent = nil
 
   if not StoreWindow then
     g_client.setInputLockWidget(nil)
@@ -281,11 +328,22 @@ function closeStore()
     StoreWindow:hide()
   end
   g_client.setInputLockWidget(nil)
-  if buyOfferWindow:isVisible() then
+  if buyOfferWindow and buyOfferWindow:isVisible() then
     buyOfferWindow:hide()
   end
 
   Offers:stopAllEvents()
+end
+
+function requestCloseStore()
+  if closeStoreEvent then
+    return
+  end
+
+  closeStoreEvent = addEvent(function()
+    closeStoreEvent = nil
+    closeStore()
+  end)
 end
 
 local function updateCoinBalanceWidgets(refreshOffers)
@@ -313,7 +371,8 @@ local function updateCoinBalanceWidgets(refreshOffers)
 end
 
 function showStoreWindow()
-  ensureStoreWindow()
+  cancelPendingStoreClose()
+  Store.ensureWindow()
 
   StoreWindow:show(true)
   StoreWindow:raise()
@@ -398,7 +457,7 @@ function showError(title, errorMessage)
 end
 
 function onStoreError(errorType, message)
-  ensureStoreWindow()
+  Store.ensureWindow()
   StoreWindow:hide()
   g_client.setInputLockWidget(nil)
   showError('Purchase Error', message)
@@ -421,7 +480,7 @@ function requestHistory()
 end
 
 function onStoreTransactionHistory(currentPage, pageCount, offers)
-  ensureStoreWindow()
+  Store.ensureWindow()
 
   if Offers.displayPanel then
     Offers.displayPanel:destroy()
@@ -483,11 +542,13 @@ function onRequestPurchaseData(transactionId, productType)
   OFFERID = nil
   OFFERTYPE = nil
   if productType == OFFER_BUY_TYPE_NAMECHANGE then
+    Store.ensureNameChangePanel()
     nameChangePanel:show()
     closeStore()
     OFFERID = transactionId
     OFFERTYPE = productType
   elseif productType == OFFER_BUY_TYPE_HIRELING then
+    Store.ensureHirelingWindow()
     hirelingWindow:show()
     closeStore()
     OFFERID = transactionId
@@ -602,6 +663,8 @@ function onStoreSearchOffers(categoryName, offers, unknow, reasons)
 end
 
 function openBaazarWindow()
+  Store.ensureWindow()
+  Store.ensureBazaarWindow()
   closeStore()
   g_client.setInputLockWidget(bazaarWindow)
   bazaarWindow:show(true)
@@ -611,9 +674,11 @@ end
 
 -- Hireling name change
 function onHirelingNameChange(hirelingId, creatureId)
-  if not ensureStoreWindow() then
+  if not Store.ensureWindow() then
     return
   end
+
+  Store.ensureHirelingNameWindow()
 
   g_ui.setInputLockWidget(hirelingNameWindow)
   hirelingNameWindow:show()
@@ -758,9 +823,11 @@ function onCpfChange(widget, text)
 end
 
 function onRecvPixData(pixList)
-  if not ensureStoreWindow() then
+  if not Store.ensureWindow() then
     return
   end
+
+  Store.ensurePixWindow()
 
   if not pixWindow:isVisible() then
     pixWindow:show()
@@ -822,7 +889,11 @@ function onRecvPixData(pixList)
 end
 
 function closePix()
-  pixWindow:hide()  g_client.setInputLockWidget(nil)
+  pixRequestGeneration = pixRequestGeneration + 1
+  if pixWindow then
+    pixWindow:hide()
+  end
+  g_client.setInputLockWidget(nil)
 end
 
 function onTermConditionChange(widgetId, value)
@@ -830,9 +901,10 @@ function onTermConditionChange(widgetId, value)
 end
 
 function onRecvPixURL(url, token)
-  if not ensureStoreWindow() then
+  if not Store.ensureWindow() then
     return
   end
+  Store.ensurePixWindow()
 
   if not pixWindow:isVisible() then
     pixWindow:show()
@@ -845,15 +917,21 @@ function onRecvPixURL(url, token)
   local qrCode = pixWindow:recursiveGetChildById('qrCode')
   qrCode:recursiveGetChildById('qrCodePanel').code:setImageSource('/images/store/store-flag-expires', false)
 
+  pixRequestGeneration = pixRequestGeneration + 1
+  local requestGeneration = pixRequestGeneration
+
 	HTTP.downloadImage(url, function(path, err)
+		if requestGeneration ~= pixRequestGeneration or not pixWindow or pixWindow:isDestroyed() or not pixWindow:isVisible() then
+			return
+		end
 		if err then
 			if DEVELOPERMODE then
 				g_logger.warning("HTTP error: " .. err .. " - ".. url)
 			end
 			return
 		end
-		local widget = qrCode:recursiveGetChildById('qrCodePanel').code
-		if widget then
+		local widget = qrCode and not qrCode:isDestroyed() and qrCode:recursiveGetChildById('qrCodePanel').code or nil
+		if widget and not widget:isDestroyed() then
 			widget:setImageSource(path, false)
 		end
 	end)
