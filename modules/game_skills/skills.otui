@@ -250,9 +250,9 @@ MiniWindow
 
     SkillButton
       margin-top: -3
-      id: stamina
+      id: feed
       SkillNameLabel
-        !text: tr('Stamina')
+        !text: tr('Feed')
       SkillValueLabel
       SkillPercentPanel
         margin-top: 15

@@ -11,6 +11,75 @@ local lastManaValue = nil
 
 skillWidgetsOptions = {}
 
+-- Feed/food bar (replaces the unused Stamina row).
+-- In this OT, food heals instantly (like potions) but only while the player
+-- is NOT full. Full = can't use food => "bad". Empty = can use => "good".
+-- So the bar color is INVERTED from a usual food bar:
+--   full = red, low = green, totally empty = neutral/invisible.
+-- Server sends the feed in SECONDS: 0 .. 120 (120s = full).
+-- Declared at the TOP so onGameStart/offline/terminate can reference them.
+local feedMaxSeconds = 120
+local currentFeed = 0
+local feedTickEvent = nil
+
+local function updateFeedBar()
+  local feedSec = math.max(0, math.min(feedMaxSeconds, currentFeed))
+  local feedPercent = math.max(0, math.min(100, (feedSec / feedMaxSeconds) * 100))
+
+  local feedColor
+  if feedPercent <= 0 then
+    feedColor = '#ffffff' -- neutral white, totally empty
+  elseif feedPercent >= 75 then
+    feedColor = '#c00000' -- red: almost/full, can't use food
+  elseif feedPercent >= 50 then
+    feedColor = '#f0ad4e' -- orange
+  elseif feedPercent >= 25 then
+    feedColor = '#9acd32' -- yellow-green
+  else
+    feedColor = '#44ad25' -- green: can use food
+  end
+
+  setSkillValue('feed', math.floor(feedSec) .. " / " .. feedMaxSeconds)
+  setSkillPercent('feed', feedPercent, tr("Feed: %s%% (full at %s)", math.floor(feedPercent + 0.5), feedMaxSeconds), feedColor)
+
+  local feedWidget = skillsWindow:recursiveGetChildById('feed')
+  if not feedWidget then return end
+  local bar = feedWidget:recursiveGetChildById('percent')
+  local value = feedWidget:getChildById('value')
+
+  if feedPercent <= 0 then
+    -- Totally empty (0 feed): keep the bar visible as a warning that the
+    -- player is NOT regenerating. Fill it yellow.
+    local hidden = not table.empty(skillWidgetsOptions) and
+        table.contains(skillWidgetsOptions["invisibleProgressBars"] or {}, 'feed')
+    if bar then
+      if not hidden then
+        bar:setVisible(true)
+        bar:setPercent(100)
+        bar:setBackgroundColor('#f0ad4e') -- amber/yellow warning
+      end
+      bar:setTooltip(tr("Feed is empty. You are not regenerating. Eat something!"))
+    end
+    if value then value:setColor('#f0ad4e') end
+  else
+    -- Restore the bar unless the user explicitly hid it via the menu.
+    local hidden = not table.empty(skillWidgetsOptions) and
+        table.contains(skillWidgetsOptions["invisibleProgressBars"] or {}, 'feed')
+    if bar and not hidden then bar:setVisible(true) end
+    if value then value:setColor('#bbbbbb') end
+  end
+end
+
+local function feedTick()
+  if not g_game.isOnline() then return end
+  -- Decrease the local feed by 1s every tick so it reflects reality between
+  -- server updates. Never goes below 0.
+  if currentFeed > 0 then
+    currentFeed = currentFeed - 1
+    updateFeedBar()
+  end
+end
+
 local combatElementMap = {
   [0] = "physical",
   [1] = "fire",
@@ -307,6 +376,8 @@ function terminate()
   ProtocolGame.unregisterExtendedJSONOpcode(ExtendedIds.WheelSkills)
   ProtocolGame.unregisterExtendedJSONOpcode(ExtendedIds.MonkData)
 
+  if feedTickEvent then feedTickEvent:cancel() feedTickEvent = nil end
+
   skillsWindow:destroy()
 end
 
@@ -369,7 +440,7 @@ function showOrHidePercentBar(skillId)
   end
 
   -- Hide/Show all
-  local options = {"level", "stamina", "offlineTraining", "magiclevel"}
+  local options = {"level", "feed", "offlineTraining", "magiclevel"}
   for i = Skill.Fist, Skill.Fishing do
     table.insert(options, "skillId"..i)
   end
@@ -427,7 +498,7 @@ function updateVisblePercentBar()
 end
 
 function resetPercentVisibility()
-  local options = {"level", "stamina", "offlineTraining", "magiclevel"}
+  local options = {"level", "feed", "offlineTraining", "magiclevel"}
   for i = Skill.Fist, Skill.Fishing do
     table.insert(options, "skillId"..i)
   end
@@ -469,7 +540,7 @@ function showSkillsPopUp(mousePosition)
   menu:addOption(tr('Reset Experience Counter'), function() g_game.getLocalPlayer().expSpeed = 0; end) -- aqui tem que trocar a tooltip tbm
   menu:addSeparator()
   menu:addCheckBoxOption(tr('Level'), function() showOrHidePercentBar("level") end, "", table.find(skillWidgetsOptions["invisibleProgressBars"], "level") == nil)
-  menu:addCheckBoxOption(tr('Stamina'), function() showOrHidePercentBar("stamina") end, "", table.find(skillWidgetsOptions["invisibleProgressBars"], "stamina") == nil)
+  menu:addCheckBoxOption(tr('Feed'), function() showOrHidePercentBar("feed") end, "", table.find(skillWidgetsOptions["invisibleProgressBars"], "feed") == nil)
   menu:addCheckBoxOption(tr('Offline Training'), function() showOrHidePercentBar("offlineTraining") end, "", table.find(skillWidgetsOptions["invisibleProgressBars"], "offlineTraining") == nil)
   menu:addCheckBoxOption(tr('Magic'), function() showOrHidePercentBar("magiclevel") end, "", table.find(skillWidgetsOptions["invisibleProgressBars"], "magiclevel") == nil)
   for i = Skill.Fist, Skill.Fishing do
@@ -655,7 +726,7 @@ function setSkillPercent(id, percent, tooltip, color)
   local widget = skill:getChildById('percent')
   if widget then
     widget:setPercent(percent)
-    if table.contains({'offlineTraining', 'stamina'}, id) then
+    if table.contains({'offlineTraining', 'feed'}, id) then
       widget:setPercent(math.floor(percent))
     end
 
@@ -693,6 +764,10 @@ function onGameStart()
   local benchmark = g_clock.millis()
   refresh()
   consoleln("Skills loaded in " .. (g_clock.millis() - benchmark) / 1000 .. " seconds.")
+
+  -- Start the feed decay timer (decreases the local feed by 1s every second).
+  if feedTickEvent then feedTickEvent:cancel() end
+  feedTickEvent = cycleEvent(feedTick, 1000)
 end
 
 function refresh()
@@ -737,7 +812,6 @@ function refresh()
   onFreeCapacityChange(player, player:getFreeCapacity())
   onTotalCapacityChange(player, player:getFreeCapacity())
   onBaseCapacityChange(player, player:getFreeCapacity())
-  onStaminaChange(player, player:getStamina())
   onMagicLevelChange(player, player:getMagicLevel(), player:getMagicLevelPercent())
   onOfflineTrainingChange(player, player:getOfflineTrainingTime())
   onRegenerationChange(player, player:getRegenerationTime())
@@ -772,6 +846,8 @@ function offline()
   end
 
   if expSpeedEvent then expSpeedEvent:cancel() expSpeedEvent = nil end
+
+  if feedTickEvent then feedTickEvent:cancel() feedTickEvent = nil end
 
   rateHighlightEvent = nil
   resetPercentVisibility()
@@ -911,36 +987,9 @@ function onBaseCapacityChange(localPlayer, totalCapacity)
   setSkillValue('capacity', player and player:getFreeCapacity() or 0)
 end
 
+-- Stamina is not used on this server; the row was repurposed as the Feed bar
+-- (see onRegenerationChange). Keep this as a safe no-op.
 function onStaminaChange(localPlayer, stamina)
-	local hours = math.floor(stamina / 60)
-	local minutes = stamina % 60
-	if minutes < 10 then
-		minutes = '0' .. minutes
-	end
-	local percent = math.floor(100 * stamina / (42 * 60)) -- max is 42 hours --TODO not in all client versions
-
-	setSkillValue('stamina', hours .. ":" .. minutes)
-
-    --TODO not all client versions have premium time
-	local text = ""
-	if stamina > (39*60) and g_game.getClientVersion() >= 1038 then
-		text = tr("You have %s hours and %s minutes left and receive ", hours, minutes) .. "50% more\nexperience (Premium Only)"
-		setSkillPercent('stamina', percent, text, 'green')
-	elseif stamina > (39*60) and g_game.getClientVersion() < 1038 then
-		text = tr("You have %s hours and %s minutes left", hours, minutes) .. '\n' ..
-		tr("If you are premium player, you will gain 50%% more experience")
-		setSkillPercent('stamina', percent, text, 'green')
-	elseif stamina <= (39*60) and stamina > 840 then
-		setSkillPercent('stamina', percent, tr("You have %s hours and %s minutes left", hours, minutes), 'orange')
-	elseif stamina <= 840 and stamina > 0 then
-		text = tr("You have %s hours and %s minutes left", hours, minutes) .. "\n" ..
-		tr("You gain only 50%% experience and you don't may gain loot from monsters")
-		setSkillPercent('stamina', percent, text, 'red')
-	elseif stamina == 0 then
-		text = tr("You have %s hours and %s minutes left", hours, minutes) .. "\n" ..
-		tr("You don't may receive experience and loot from monsters")
-		setSkillPercent('stamina', percent, text, 'black')
-	end
 end
 
 function onOfflineTrainingChange(localPlayer, offlineTrainingTime)
@@ -963,22 +1012,9 @@ function onRegenerationChange(localPlayer, regenerationTime)
     return
   end
 
-  local hours = math.floor(regenerationTime / 3600)
-  local minutes = math.floor((regenerationTime % 3600) / 60)
-  local seconds = regenerationTime % 60
-
-  if hours < 10 then
-    hours = '0' .. hours
-  end
-  if minutes < 10 then
-    minutes = '0' .. minutes
-  end
-  if seconds < 10 then
-    seconds = '0' .. seconds
-  end
-
-  modules.client_settings.onHungryChange(localPlayer, regenerationTime > 0)
-  setSkillValue('regenerationTime', hours .. ":" .. minutes .. ":" .. seconds)
+  -- Resync the local feed to the server value (source of truth).
+  currentFeed = regenerationTime
+  updateFeedBar()
 end
 
 
