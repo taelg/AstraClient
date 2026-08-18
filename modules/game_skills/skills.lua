@@ -26,6 +26,11 @@ local function updateFeedBar()
   local feedSec = math.max(0, math.min(feedMaxSeconds, currentFeed))
   local feedPercent = math.max(0, math.min(100, (feedSec / feedMaxSeconds) * 100))
 
+  -- Reflect the feed on the player's healthcircle (ManaShield arc) too.
+  if modules and modules.game_healthcircle and modules.game_healthcircle.setFeed then
+    modules.game_healthcircle.setFeed(currentFeed)
+  end
+
   local feedColor
   if feedPercent <= 0 then
     feedColor = '#ffffff' -- neutral white, totally empty

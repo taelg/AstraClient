@@ -15,7 +15,7 @@ skillCircleFront = nil
 
 manaShieldImageSizeBroad = 0
 manaShieldImageSizeThin = 0
-manaShieldCircleOffsetX = -52
+manaShieldCircleOffsetX = -74
 manaShieldCircleOffsetY = 7
 
 optionPanel = nil
@@ -494,83 +494,78 @@ local function resetManaCircleImages()
 end
 
 local function updateManaShieldDisplay(showOverride)
+    -- HARDCODED: the ManaShield circle now shows the player's feed via setFeed(),
+    -- so this old shield-drawing routine must NOT touch the ring anymore.
+    -- Other processes calling this were fighting over the same widget and
+    -- causing flicker/wrong redraws, so this is now a no-op.
+    return
+end
+
+function whenManaShieldChange()
+    updateManaShieldDisplay()
+end
+
+-- Feed arc: reuse the ManaShield circle to show the player's feed level.
+-- `value` is the feed in seconds (0..feedMax). Clamped and drawn as a ring.
+local feedArcMax = 120
+local lastFeedValue = 0
+
+function setFeed(value)
+    if not isManaCircle or not healthCirclePositioned or not hasStableMapGeometry(getMapPanel()) then
+        return
+    end
+
     if not manaShieldCircle or not manaShieldCircleFront or not manaCircle or not manaCircleFront then
         return
     end
 
-    if not g_game.isOnline() or not healthCirclePositioned or not isManaCircle or not getShowHealthManaCircleSetting(showOverride) or not hasStableMapGeometry(getMapPanel()) then
-        manaShieldCircle:setVisible(false)
-        manaShieldCircleFront:setVisible(false)
-        resetManaCircleImages()
-        return
-    end
+    -- Remember the last feed value so we can re-render after any repositioning
+    lastFeedValue = value
 
-    local player = g_game.getLocalPlayer()
-    if not player then
-        return
-    end
+    local feedPercent = math.max(0, math.min(1, (tonumber(value) or 0) / feedArcMax))
 
-    local remainingShield = player:getMagicShield() or 0
-    local hasManaShield = (type(player.useMagicShield) == 'function' and player:useMagicShield()) or remainingShield > 0
-    if not hasManaShield then
-        manaShieldCircle:setVisible(false)
-        manaShieldCircleFront:setVisible(false)
-        resetManaCircleImages()
-        return
-    end
-
-    local maxShield = player:getMaxMagicShield() or 0
-
-    if remainingShield <= 0 then
-        manaShieldCircle:setVisible(false)
-        manaShieldCircleFront:setVisible(false)
-        resetManaCircleImages()
-        return
-    end
-
-    if maxShield <= 0 then
-        maxShield = remainingShield
-    end
-
-    setManaShieldArcImages()
+    -- HARDCODED: only touch the feed (ManaShield) rings, never the mana ring.
+    -- setManaShieldArcImages() also swapped the mana ring images and caused
+    -- distortions, so we set the feed ring images directly here instead.
+    manaShieldCircle:setImageSource(manaShieldManaCircleEmpty)
+    manaShieldCircleFront:setImageSource(manaShieldManaCircleFull)
     positionManaShieldCircle()
+
     local geometryReady = hasStableMapGeometry(getMapPanel())
     manaShieldCircle:setVisible(geometryReady)
     manaShieldCircleFront:setVisible(geometryReady)
 
-    local clampedShield = math.max(math.min(remainingShield, maxShield), 0)
-    local shieldPercent = clampedShield / maxShield
-
-    local emptyPixels = math.floor(manaShieldImageSizeBroad * (1 - shieldPercent))
-    if emptyPixels < 0 then
-        emptyPixels = 0
+    -- Color the feed ring like the skills feed bar (inverted: full=red, empty=amber)
+    local pct100 = feedPercent * 100
+    local color
+    if pct100 <= 0 then
+        color = '#f0ad4e' -- amber: not regenerating (warning)
+    elseif pct100 >= 75 then
+        color = '#c00000' -- red: almost/full, can't eat
+    elseif pct100 >= 50 then
+        color = '#f0ad4e' -- orange
+    elseif pct100 >= 25 then
+        color = '#9acd32'
+    else
+        color = '#44ad25' -- green: can eat
     end
-    if emptyPixels > manaShieldImageSizeBroad then
-        emptyPixels = manaShieldImageSizeBroad
-    end
+    manaShieldCircleFront:setImageColor(color)
 
+    local emptyPixels = math.floor(manaShieldImageSizeBroad * (1 - feedPercent))
+    if emptyPixels < 0 then emptyPixels = 0 end
+    if emptyPixels > manaShieldImageSizeBroad then emptyPixels = manaShieldImageSizeBroad end
     local filledPixels = manaShieldImageSizeBroad - emptyPixels
 
     manaShieldCircleFront:setY(manaShieldCircle:getY() + emptyPixels)
     manaShieldCircleFront:setHeight(filledPixels)
     manaShieldCircleFront:setImageClip({
-        x = 0,
-        y = emptyPixels,
-        width = manaShieldImageSizeThin,
-        height = filledPixels
+        x = 0, y = emptyPixels, width = manaShieldImageSizeThin, height = filledPixels
     })
 
     manaShieldCircle:setHeight(emptyPixels)
     manaShieldCircle:setImageClip({
-        x = 0,
-        y = 0,
-        width = manaShieldImageSizeThin,
-        height = emptyPixels
+        x = 0, y = 0, width = manaShieldImageSizeThin, height = emptyPixels
     })
-end
-
-function whenManaShieldChange()
-    updateManaShieldDisplay()
 end
 
 function whenManaChange(showOverride)
@@ -587,10 +582,8 @@ function whenManaChange(showOverride)
         if maxMana <= 0 then
             manaCircle:setVisible(false)
             manaCircleFront:setVisible(false)
-            if manaShieldCircle and manaShieldCircleFront then
-                manaShieldCircle:setVisible(false)
-                manaShieldCircleFront:setVisible(false)
-            end
+            -- HARDCODED: do NOT hide the feed (manaShield) ring here; it's
+            -- driven solely by setFeed() and other code hiding it caused flicker.
             resetManaCircleImages()
             return
         elseif isManaCircle then
@@ -770,6 +763,10 @@ function whenMapResizeChange(showOverride)
         applyHealthManaCircleVisibility(showOverride)
         whenHealthChange(showOverride)
         whenManaChange(showOverride)
+        -- Re-render the feed ring right away. positionManaShieldCircle() just
+        -- reset the front's Y to the base (top), which would flicker until the
+        -- next feed tick; re-applying the last feed fixes it immediately.
+        setFeed(lastFeedValue)
         if isExpCircle or isSkillCircle then
             whenSkillsChange()
         end
