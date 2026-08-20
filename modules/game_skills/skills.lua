@@ -1265,6 +1265,10 @@ function move(panel, height, index, minimized)
     skillsWindow:setHeight(height)
   end
 
+  -- corrige o teto após os stats assíncronos (offence/defence/misc/wheel) terem tempo de chegar e estabilizar os widgets visíveis.
+  scheduleEvent(function() skillsWindow:setContentMaximumHeight(math.max(125, getContentPanelHeight() + 6))end, 300) -- Isso resolve local, mas pode falhar em conexões mais lentas, pois pode acontecer antes dos comandos que vem via rede.
+  scheduleEvent(function() skillsWindow:setContentMaximumHeight(math.max(125, getContentPanelHeight() + 6))end, 1500) -- Por isso o double schedule do evento garante para conexões mais lentas sem efeitos colaterais.
+
   return skillsWindow
 end
 
