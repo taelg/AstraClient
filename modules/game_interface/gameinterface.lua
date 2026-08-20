@@ -493,6 +493,65 @@ local function scheduleTopBarSettingsRefresh()
   end
 end
 
+-- ============================================================================
+-- Auto-open windows on login
+-- ----------------------------------------------------------------------------
+-- Windows that open automatically (already open, maximized) in the LEFT panel
+-- when entering the game.
+--
+-- To auto-open a new window, just append an entry to `loginWindows`:
+--   id     - unique name (used only for logging)
+--   height - height used when the window is opened
+-- panel: optional index of the left panel (1 = first, 2 = second).
+--   open   - function(panel, height) that parents + opens the window into
+--            `panel`. Reuse the module's existing move helper (the same one
+--            used by the sidebars save/restore), e.g.:
+--              modules.game_X.move(panel, height, 1, false)
+-- ============================================================================
+local loginWindows = {
+  {
+    id = 'skills',
+    panel = 1,
+    height = 633,
+    open = function(panel, height)
+      local skills = modules.game_skills
+      if skills and skills.skillsWindow then
+        skills.move(panel, height, 0, false)
+      end
+    end,
+  },
+  {
+    id = 'battleList',
+    panel = 2,
+    height = 250,
+    open = function(panel, height)
+      local battle = modules.game_battle
+      local main = battle and battle.getMainBattle and battle.getMainBattle()
+      if main and main.window then
+        battle.moveBattle(0, panel, height, false)
+      end
+    end,
+  },
+}
+
+local function openLoginWindows()
+  for _, entry in ipairs(loginWindows) do
+    local panel
+    if entry.panel and gameLeftPanels and gameLeftPanels:getChildCount() >= entry.panel then
+      panel = gameLeftPanels:getChildByIndex(entry.panel)
+    end
+    panel = panel or getLeftPanel()
+    if not panel then
+      return
+    end
+
+    local ok, err = pcall(entry.open, panel, entry.height)
+    if not ok then
+      g_logger.warning(string.format("Failed to auto-open login window '%s': %s", entry.id, tostring(err)))
+    end
+  end
+end
+
 function onGameStart()
   local benchmark = g_clock.millis()
   refreshViewMode()
@@ -521,6 +580,11 @@ function onGameStart()
   end
 
   interfaceSaved = false
+
+  -- Open the auto-login windows (skills/battle) in the left panel. Runs after
+  -- the sidebars restore so this placement always wins.
+  scheduleEvent(openLoginWindows, 300)
+
   consoleln("Game Interface loaded in " .. (g_clock.millis() - benchmark) / 1000 .. " seconds.")
 end
 
